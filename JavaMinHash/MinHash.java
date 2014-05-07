@@ -7,7 +7,6 @@ import java.util.Random;
 import java.util.Set;
 
 public class MinHash<T> {
-
     private int hash[][];
     private int numHash;
     
