@@ -18,4 +18,4 @@ struct ccsMatrix{
   vector<int> col_ptr;
 };
 
-void kernelManager(vector<int> &h_signatureMatrix, vector<int> &h_hashMatrix, ccsMatrix* h_characteristicMatrix, int lwSize, int numHashFunctions, int sSize, int rSize, vector<string> relationRSetsID, vector<string> relationSSetsID);
+void kernelManager(vector<int> &h_signatureMatrix, ccsMatrix* h_characteristicMatrix, int lwSize, int numHashFunctions, int sSize, int rSize, vector<string> relationRSetsID, vector<string> relationSSetsID);

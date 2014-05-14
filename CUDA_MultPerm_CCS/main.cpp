@@ -100,6 +100,7 @@ numberOfUniqueWords(unordered_multimap<int,string> wordSetMap)
   return count;
 }
 */
+/*
 int
 generateHash()
 {
@@ -110,7 +111,8 @@ generateHash()
 
   return hashValue;
 }
-
+*/
+/*
 vector<int>
 buildHashMatrix(int numberOfUniqueWords, int numHashFunctions)
 {
@@ -124,6 +126,7 @@ buildHashMatrix(int numberOfUniqueWords, int numHashFunctions)
 
   return hashMatrix;
 }
+*/
 
 //Performs a nested loop to check the similarities between the sets and output pairs with similarity greater than the threshold
 //*Change to a more efficient join algorithm
@@ -184,12 +187,12 @@ main(int argc, char *argv[])
   cout << "Number of Unique Words: " << numberOfUniqueWords << "\n";
 
   //Create the hash matrix
-  vector<int> h_hashMatrix = buildHashMatrix(numberOfUniqueWords, numHashFunctions);
-  cout << "hmMatrix Size: " << h_hashMatrix.size() << "\n";
+  //vector<int> h_hashMatrix = buildHashMatrix(numberOfUniqueWords, numHashFunctions);
+  //cout << "hmMatrix Size: " << h_hashMatrix.size() << "\n";
 
   //Initialize and update the signature matrix (on GPU)
   vector<int> h_signatureMatrix ((rSize+sSize)*numHashFunctions);
-  kernelManager(h_signatureMatrix, h_hashMatrix, h_characteristicMatrix, numberOfUniqueWords, numHashFunctions, rSize, sSize, relationRSetsID, relationSSetsID);
+  kernelManager(h_signatureMatrix, h_characteristicMatrix, numberOfUniqueWords, numHashFunctions, rSize, sSize, relationRSetsID, relationSSetsID);
   cout << "smMatrix Size: " << h_signatureMatrix.size() << "\n";
 
   //Perform a nested loop to check the similarities between sets

@@ -13,6 +13,55 @@
 //-Matrix tilling
 //-Better control of out of bound
 
+//Each thread calculates the hash values for the word it is responsible to
+__global__ void
+buildHashMatrix_kernel(int* d_hashMatrix, int numHashFunctions, int lwSize, unsigned long seed)
+{
+  int offSetHM;
+  const unsigned int tid = threadIdx.x + blockDim.x * blockIdx.x;
+  curandState state;
+  curand_init(seed, tid, 0, &state);
+
+  if (tid < lwSize) {
+    for (int i = 0; i < numHashFunctions; i++) {
+      offSetHM = tid + (i*lwSize);
+      d_hashMatrix[offSetHM] = curand(&state);
+    }
+  }
+  /*
+  int i, j, k;
+
+  const unsigned int tid = threadIdx.x + blockDim.x * blockIdx.x;
+
+  //Generate hashes for one unique word
+  curandState state;
+  curand_init(seed, tid, 0, &state);
+  int hashesForWord[NUM_HASH_FUNCTIONS] = {0};
+  for (i = 0; i < numHashFunctions; i++) {
+    hashesForWord[i] = curand(&state);
+  }
+  
+  //Compares the current values of in the signature matrix with the new hashes
+  if (tid < lwSize - 1) {
+    //Load imbalance: threads with many sets will work more
+    int offsetCM = d_cmRowPtr[tid];
+    for (i = offsetCM; i < d_cmRowPtr[tid+1]; i++) {
+      int setIdx = d_cmColIdx[i];
+      int offsetSM = setIdx * numHashFunctions;
+      for (j = 0, k = offsetSM; ((j < numHashFunctions) && (k < offsetSM+numHashFunctions)); j++, k++) {
+	if (k < smSize) {
+	  if (d_signatureMatrix[k] > hashesForWord[j]) { //Incorrect: other threads can update the value after it is read
+	    //Find a better way without using atomics
+	    atomicExch(&d_signatureMatrix[k], hashesForWord[j]);
+	  }
+	}
+      }
+    }
+  }
+*/
+}
+
+
 //Each thread initializes the vales for the set it is responsible to
 __global__ void
 buildSignatureMatrix_kernel(int* d_signatureMatrix, int numHashFunctions, int smSize, int numSets)
@@ -99,7 +148,7 @@ nestedLoopJoin_kernel(int* d_signatureMatrix, int rSize, int sSize, int numHashF
 }
 
 void
-kernelManager(vector<int> &h_signatureMatrix, vector<int> &h_hashMatrix, ccsMatrix* h_characteristicMatrix, int lwSize, int numHashFunctions, int sSize, int rSize, vector<string> relationRSetsID, vector<string> relationSSetsID)
+kernelManager(vector<int> &h_signatureMatrix, ccsMatrix* h_characteristicMatrix, int lwSize, int numHashFunctions, int sSize, int rSize, vector<string> relationRSetsID, vector<string> relationSSetsID)
 {
   int numberOfThreads = THREADS_PER_BLOCK;
   int numberOfBlocks;
@@ -114,7 +163,7 @@ kernelManager(vector<int> &h_signatureMatrix, vector<int> &h_hashMatrix, ccsMatr
   int cmRowIdxSize = h_characteristicMatrix -> row_ind.size();
   int cmColPtrSize = h_characteristicMatrix -> col_ptr.size();
   int smSize = h_signatureMatrix.size();
-  int hmSize = h_hashMatrix.size();
+  int hmSize = lwSize*numHashFunctions;
 
   //CRS representation of the characteristic matrix
   vector<int> h_cmRowIdx = h_characteristicMatrix -> row_ind;
@@ -130,11 +179,18 @@ kernelManager(vector<int> &h_signatureMatrix, vector<int> &h_hashMatrix, ccsMatr
   //Memory transfer CPU -> GPU
   cudaMemcpy(d_cmRowIdx, &h_cmRowIdx[0], sizeof(int) * cmRowIdxSize, cudaMemcpyHostToDevice);
   cudaMemcpy(d_cmColPtr, &h_cmColPtr[0], sizeof(int) * cmColPtrSize, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_hashMatrix, &h_hashMatrix[0], sizeof(int) * hmSize, cudaMemcpyHostToDevice);
+  //  cudaMemcpy(d_hashMatrix, &h_hashMatrix[0], sizeof(int) * hmSize, cudaMemcpyHostToDevice);
   cudaMemcpy(d_similarPairsCount, &h_similarPairsCount, sizeof(int), cudaMemcpyHostToDevice);
+
+  //Build Hash Matrix
+  numberOfBlocks = lwSize / THREADS_PER_BLOCK;
+  if (lwSize % THREADS_PER_BLOCK) numberOfBlocks++;
+  buildHashMatrix_kernel<<<numberOfBlocks, numberOfThreads>>>(d_hashMatrix, numHashFunctions, lwSize, time(NULL));
 
   //Print Hash Matrix
   /*
+  vector<int> h_hashMatrix(hmSize);
+  cudaMemcpy(&h_hashMatrix[0], d_hashMatrix, sizeof(int)*hmSize, cudaMemcpyDeviceToHost);
   for (int i = 0; i < numHashFunctions; i++) {
     for (int j = i*numHashFunctions; j < (i*numHashFunctions)+lwSize; j++) {
       cout << h_hashMatrix[j] << " ";      
@@ -188,6 +244,7 @@ kernelManager(vector<int> &h_signatureMatrix, vector<int> &h_hashMatrix, ccsMatr
 
   //Free GPU allocated memory
   cudaFree(d_signatureMatrix);
+  cudaFree(d_hashMatrix);
   cudaFree(d_cmRowIdx);
   cudaFree(d_cmColPtr);
   cudaFree(d_similarPairsCount);
