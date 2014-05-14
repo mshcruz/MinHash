@@ -14,7 +14,7 @@ using namespace std;
 
 typedef struct crsMatrix crsMatrix;
 struct crsMatrix{
-  vector<int> val;
+  //  vector<int> val;
   vector<int> col_ind;
   vector<int> row_ptr;
 };

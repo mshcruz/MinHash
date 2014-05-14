@@ -4,11 +4,7 @@
 #define THREADS_PER_BLOCK 256
 #define NUM_HASH_FUNCTIONS 500
 #define SIMILARITY_THRESHOLD 0.6
-#define SM_SIZE 49152
-
-//#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 200)
-//# error printf is only supported on devices of compute capability 2.0 and higher, please compile with -arch=sm_20 or higher    
-//#endif
+//#define SM_SIZE 49152
 
 //TODO
 //-Coalesced Access
@@ -21,12 +17,22 @@ __global__ void
 buildSignatureMatrix_kernel(int* d_signatureMatrix, int numHashFunctions, int smSize)
 {
   const unsigned int tid = threadIdx.x + blockDim.x * blockIdx.x;
+  int offSetSM;
+  for (int i = 0; i < numHashFunctions; i++) {
+    offSetSM = i * tid;
+    if (offSetSM < smSize) {
+      d_signatureMatrix[offSetSM] = INT_MAX;
+    }
+  }
+  /* 
+  //Not coalesced
   int offsetSM = tid*numHashFunctions;
   for (int i = offsetSM; i < offsetSM+numHashFunctions; i++) {
     if (i < smSize) {
       d_signatureMatrix[i] = INT_MAX;
     }
   }
+  */
 }
 
 /*
@@ -254,9 +260,11 @@ kernelManager(vector<int> &h_signatureMatrix, crsMatrix* h_characteristicMatrix,
   updateSignatureMatrix_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrix, d_cmColIdx, d_cmRowPtr, lwSize, smSize, numSets, numHashFunctions, time(NULL));
 
   //Nested Loop Join
+  /*
   numberOfBlocks = rSize / THREADS_PER_BLOCK;
   if (rSize % THREADS_PER_BLOCK) numberOfBlocks++;
   nestedLoopJoin_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrix, rSize, sSize, numHashFunctions, threshold, d_similarPairsCount);
+  */
 
   //Nested Block Loop Join
   /*
@@ -266,9 +274,9 @@ kernelManager(vector<int> &h_signatureMatrix, crsMatrix* h_characteristicMatrix,
   */
 
   //Memory transfer GPU -> CPU
-  cudaMemcpy(&h_similarPairsCount, d_similarPairsCount, sizeof(int), cudaMemcpyDeviceToHost);
+  //  cudaMemcpy(&h_similarPairsCount, d_similarPairsCount, sizeof(int), cudaMemcpyDeviceToHost);
 
-  printf("Number of similar pairs: %d\n", h_similarPairsCount);
+  //printf("Number of similar pairs: %d\n", h_similarPairsCount);
 
   //Free GPU allocated memory
   cudaFree(d_signatureMatrix);

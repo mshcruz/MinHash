@@ -198,7 +198,7 @@ computeSimilarities(vector<int> signatureMatrix, int rSize, int sSize, int numHa
 	}
 	float similarity = (identicalMinhashes*1.0)/(numHashFunctions*1.0);
 	if (similarity >= 0.6) {
-	  // cout << "The similarity between record" << relationRSetsID[i/numHashFunctions] << " and record" << relationSSetsID[(j/numHashFunctions)-rSize] << " is " << similarity << "\n";
+	  //cout << "The similarity between record" << relationRSetsID[i/numHashFunctions] << " and record" << relationSSetsID[(j/numHashFunctions)-rSize] << " is " << similarity << "\n";
 	  similarPairs++;
 	}
       }

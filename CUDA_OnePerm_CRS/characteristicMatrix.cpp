@@ -13,7 +13,7 @@ buildCharacteristicMatrix(unordered_multimap<string,int> wordSetMap){
     pair<unordered_multimap<string,int>::iterator, unordered_multimap<string,int>::iterator> ii = wordSetMap.equal_range(it->first);
     unordered_multimap<string,int>::iterator i;
     for (i = ii.first; i != ii.second; ++i) { //Checks what sets contain the current unique word
-      characteristicMatrix -> val.push_back(1);
+      //      characteristicMatrix -> val.push_back(1);
       characteristicMatrix -> col_ind.push_back(i -> second);
       if (newRowFlag) {
 	characteristicMatrix -> row_ptr.push_back(addedElements);
@@ -31,12 +31,13 @@ buildCharacteristicMatrix(unordered_multimap<string,int> wordSetMap){
 void 
 printCharacteristicMatrixVectors (crsMatrix *characteristicMatrix)
 {
+  /*
   cout << "val vector - Size: " << characteristicMatrix -> val.size() << "\n";
   for (int value : characteristicMatrix -> val) {
     cout << value << " ";
   }
   cout << "\n\n";
-
+  */
   cout << "col_ind vector - Size: " << characteristicMatrix -> col_ind.size() << "\n";
   for (int value : characteristicMatrix -> col_ind) {
     cout << value << " ";
@@ -53,5 +54,5 @@ printCharacteristicMatrixVectors (crsMatrix *characteristicMatrix)
 int 
 crsMatrixSize (crsMatrix *characteristicMatrix)
 {
-  return (characteristicMatrix -> val.size() * 2) + characteristicMatrix -> row_ptr.size(); 
+  return (characteristicMatrix -> col_ind.size()) + characteristicMatrix -> row_ptr.size(); 
 }
