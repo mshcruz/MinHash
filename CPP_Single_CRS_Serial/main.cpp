@@ -8,13 +8,13 @@
 #include <vector>
 #include <stdlib.h>
 #include <limits.h>
-#include <unordered_map>
+#include <map>
 #include "characteristicMatrix.h"
 
 #define NUM_BINS 256
 
 int
-processInputRelation(std::unordered_multimap<std::string,int>& shingleSetMap, std::vector<std::string> &setsIDs, std::string fileName, int relationOffset)
+processInputRelation(std::multimap<std::string,int>& shingleSetMap, std::vector<std::string> &setsIDs, std::string fileName, int relationOffset)
 {
   std::ifstream relation (fileName);
   std::string shingle, value, line = "";
@@ -119,7 +119,7 @@ computeSimilarities(std::vector<int> signatureMatrix, int rSize, int sSize, int 
 }
 
 int
-shinglesNumber(std::unordered_multimap<std::string,int> shingleSetMap)
+shinglesNumber(std::multimap<std::string,int> shingleSetMap)
 {
   int count = 0;
   for (auto it = shingleSetMap.begin(); it != shingleSetMap.end(); it = shingleSetMap.equal_range(it->first).second){
@@ -136,7 +136,7 @@ main(int argc, char *argv[])
     return 1;
   }
   
-  std::unordered_multimap<std::string,int> shingleSetMap;
+  std::multimap<std::string,int> shingleSetMap;
   std::vector<std::string> relationRSetsID;
   std::vector<std::string> relationSSetsID;
   std::vector<int> primeNumbersForHashing = {7993, 13729, 23399, 39551, 65371, 102437, 164617, 274007, 441937, 7108087};
@@ -184,7 +184,7 @@ main(int argc, char *argv[])
   }
   */
   std::cout << "Computing similarities...\n";
-  //computeSimilarities(signatureMatrix, rSize, sSize, numBins, relationRSetsID, relationSSetsID);
+  computeSimilarities(signatureMatrix, rSize, sSize, numBins, relationRSetsID, relationSSetsID);
 
   delete(characteristicMatrix);
   

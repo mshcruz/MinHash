@@ -1,6 +1,6 @@
 #include <vector>
 #include <string>
-#include <unordered_map>
+#include <map>
 
 typedef struct crsMatrix crsMatrix;
 struct crsMatrix{
@@ -9,6 +9,6 @@ struct crsMatrix{
   std::vector<int> row_ptr;
 };
 
-crsMatrix* buildCharacteristicMatrix(std::unordered_multimap<std::string, int>);
+crsMatrix* buildCharacteristicMatrix(std::multimap<std::string, int>);
 void printCharacteristicMatrixVectors (crsMatrix*);
 int crsMatrixSize (crsMatrix*);

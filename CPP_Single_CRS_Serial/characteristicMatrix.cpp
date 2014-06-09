@@ -4,15 +4,15 @@
 #include "characteristicMatrix.h"
 
 crsMatrix* 
-buildCharacteristicMatrix(std::unordered_multimap<std::string,int> shingleSetMap){
+buildCharacteristicMatrix(std::multimap<std::string,int> shingleSetMap){
   crsMatrix *characteristicMatrix = new crsMatrix();
   int newRowFlag;
   int addedElements = 0;
   for (auto it = shingleSetMap.begin(); it != shingleSetMap.end();){
     //std::cout << "*first: " << it-> first << "\n";
     newRowFlag = 1;
-    std::pair<std::unordered_multimap<std::string,int>::iterator, std::unordered_multimap<std::string,int>::iterator> ii = shingleSetMap.equal_range(it->first);
-    std::unordered_multimap<std::string,int>::iterator i;
+    std::pair<std::multimap<std::string,int>::iterator, std::multimap<std::string,int>::iterator> ii = shingleSetMap.equal_range(it->first);
+    std::multimap<std::string,int>::iterator i;
     for (i = ii.first; i != ii.second; ++i) { //Checks what sets contain the current unique word
       //std::cout << "second: " << i->second << "\n";
       //      characteristicMatrix -> val.push_back(1);
