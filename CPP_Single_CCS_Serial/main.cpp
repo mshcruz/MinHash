@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <chrono>
 #include <algorithm>
 #include <iostream>
@@ -87,7 +88,8 @@ computeSignatureMatrix(std::vector<int> &signatureMatrix, std::vector<int> &hash
       shingleIdx = characteristicMatrix -> row_ind[j];
       //      std::cout << "shingleidx: " << shingleIdx << " shingleNewIdx: " << hashMatrix[shingleIdx]  << "\n";
       binIdx = hashMatrix[shingleIdx]/binSize;
-      offSetSM = i + (binIdx*numSets);
+      //      offSetSM = i + (binIdx*numSets);
+      offSetSM = binIdx + (i*numBins);
       if (signatureMatrix[offSetSM] > hashMatrix[shingleIdx]) {
 	signatureMatrix[offSetSM] = hashMatrix[shingleIdx];
       }
@@ -105,8 +107,8 @@ computeSimilarities(std::vector<int> signatureMatrix, int rSize, int sSize, std:
       int identicalMinhashes = 0;
       int emptyBins = 0;
       for (int k = 0; k < numBins; k++) {
-	if (signatureMatrix[i+(k*numSets)] == signatureMatrix[j+(k*numSets)]) {
-	  if (signatureMatrix[i+(k*numSets)] == INT_MAX) {
+	if (signatureMatrix[k+(i*numBins)] == signatureMatrix[k+(j*numBins)]) {
+	  if (signatureMatrix[k+(i*numBins)] == INT_MAX) {
 	    emptyBins++;
 	  } else {
 	    identicalMinhashes++;
