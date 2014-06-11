@@ -4,6 +4,7 @@
 
 #define THREADS_PER_BLOCK 256
 #define SIMILARITY_THRESHOLD 0.6
+#define SETS_PER_KERNEL 10000
 
 //Possible optimizations:
 //-Coalesced Access
@@ -30,25 +31,31 @@ buildHashMatrix_kernel(int* d_hashMatrix, int numShingles, unsigned long seed, i
 }
 
 __global__ void
-buildSignatureMatrix_kernel(int* d_signatureMatrix, int smSize)
+buildSignatureMatrixChunk_kernel(int* d_signatureMatrixChunk, int smChunkSize)
 {
+  //  printf("building sm...\n");
   const int tid = threadIdx.x + blockDim.x * blockIdx.x;
-  if (tid < smSize) {
-    d_signatureMatrix[tid] = INT_MAX;
+  if (tid < smChunkSize) {
+    d_signatureMatrixChunk[tid] = INT_MAX;
   }
 }
 
 __global__ void
-updateSignatureMatrix_kernel(int *d_signatureMatrix, int *d_hashMatrix, int *d_cmRowIdx, int* d_cmColPtr, int numShingles, int smSize, int numSets, int numBins, int binSize)
+updateSignatureMatrix_kernel(int *d_signatureMatrixChunk, int *d_hashMatrix, int *d_cmRowIdx, int* d_cmColPtr, int numShingles, int smChunkSize, int numSetsChunk, int numBins, int binSize, int offSetCM)
 {
   const int tid = threadIdx.x + blockDim.x * blockIdx.x;
-  int binIdx, offSetSM, shingleIdx;
-  if (tid < numSets) {
-    for (int i = d_cmColPtr[tid]; i < d_cmColPtr[tid+1]; i++ ) {
+  int binIdx, offSetSMChunk, shingleIdx;
+  if (tid < numSetsChunk) {
+    for (int i = d_cmColPtr[offSetCM+tid]; i < d_cmColPtr[offSetCM+tid+1]; i++ ) {
       shingleIdx = d_cmRowIdx[i];
       binIdx = d_hashMatrix[shingleIdx]/binSize;
-      offSetSM = (binIdx*numSets)+tid;
-      atomicMin(&d_signatureMatrix[offSetSM], d_hashMatrix[shingleIdx]);
+      //      offSetSM = (binIdx*numSets)+tid;
+      offSetSMChunk = binIdx + (tid*numBins);
+      
+
+      atomicMin(&d_signatureMatrixChunk[offSetSMChunk], d_hashMatrix[shingleIdx]);
+      //  printf("tid: %d, shingleIdx: %d, hashedShingle: %d, binIdx: %d, smValue: %d\n", tid, shingleIdx, d_hashMatrix[shingleIdx], binIdx, d_signatureMatrixChunk[offSetSM]);      
+//printf("smChunk new value: %d", &d_signatureMatrixChunk[offSetSM]);
     }
   }
 }
@@ -65,8 +72,15 @@ nestedLoopJoin_kernel(int* d_signatureMatrix, int rSize, int sSize, float thresh
       identicalMinhashes = 0;
       emptyBins = 0;
       for (int j = 0; j < numBins; j++) {
-	if (d_signatureMatrix[tid+(j*numSets)] == d_signatureMatrix[i+(j*numSets)]) {
-	  if (d_signatureMatrix[tid+(j*numSets)] == INT_MAX) {
+	// if (d_signatureMatrix[tid+(j*numSets)] == d_signatureMatrix[i+(j*numSets)]) {
+	//   if (d_signatureMatrix[tid+(j*numSets)] == INT_MAX) {
+	//     emptyBins++;
+	//   } else {
+	//     identicalMinhashes++;
+	//   }
+	// }
+	if (d_signatureMatrix[(tid*numBins)+j] == d_signatureMatrix[(i*numBins)+j]) {
+	  if (d_signatureMatrix[(tid*numBins)+j] == INT_MAX) {
 	    emptyBins++;
 	  } else {
 	    identicalMinhashes++;
@@ -85,28 +99,24 @@ nestedLoopJoin_kernel(int* d_signatureMatrix, int rSize, int sSize, float thresh
 void
 kernelManager(std::vector<int> &h_signatureMatrix, ccsMatrix* h_characteristicMatrix, int numShingles, int primeForHashing, int sSize, int rSize, int numBins, int binSize)
 {
-  int numberOfThreads = THREADS_PER_BLOCK;
-  int numberOfBlocks;
-  int numSets = rSize + sSize;
+  int numberOfThreads = THREADS_PER_BLOCK, numberOfBlocks, numSets = rSize + sSize, h_similarPairsCount = 0;
   float threshold = SIMILARITY_THRESHOLD;
-  int h_similarPairsCount = 0;
 
   //Device variables
-  int *d_hashMatrix, *d_signatureMatrix, *d_cmRowIdx, *d_cmColPtr;
-  int *d_similarPairsCount;
+  int *d_hashMatrix, *d_signatureMatrixChunk, *d_cmRowIdx, *d_cmColPtr, *d_similarPairsCount;
 
   //Size of data structures
   int cmRowIdxSize = h_characteristicMatrix -> row_ind.size();
   int cmColPtrSize = h_characteristicMatrix -> col_ptr.size();
   int smSize = h_signatureMatrix.size();
+
   int hmSize = numShingles;
 
-  //CRS representation of the characteristic matrix
+  //Characteristic matrix
   std::vector<int> h_cmRowIdx = h_characteristicMatrix -> row_ind;
   std::vector<int> h_cmColPtr = h_characteristicMatrix -> col_ptr;
 
   //Memory allocation on GPU
-  cudaMalloc(&d_signatureMatrix, sizeof(int) * smSize);
   cudaMalloc(&d_hashMatrix, sizeof(int) * hmSize);
   cudaMalloc(&d_cmRowIdx, sizeof(int) * cmRowIdxSize);
   cudaMalloc(&d_cmColPtr, sizeof(int) * cmColPtrSize);
@@ -130,38 +140,64 @@ kernelManager(std::vector<int> &h_signatureMatrix, ccsMatrix* h_characteristicMa
   std::cout << "\n";
   */
 
-  //Build Signature Matrix
-  numberOfBlocks = smSize / THREADS_PER_BLOCK;
-  if (smSize % THREADS_PER_BLOCK) numberOfBlocks++;
-  buildSignatureMatrix_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrix, smSize);
+  //Calculate parts of the signature matrix (each kernel call computes the bin values for SETS_PER_KERNEL number of sets)
+  int smChunkSize = SETS_PER_KERNEL*numBins;
+  cudaMalloc(&d_signatureMatrixChunk, sizeof(int) * smChunkSize);
+  int numKernelCalls = numSets / SETS_PER_KERNEL;
+  for (int i = 0; i < numKernelCalls; i++) {
+    numberOfBlocks = smChunkSize / THREADS_PER_BLOCK;
+    if (smChunkSize % THREADS_PER_BLOCK) numberOfBlocks++;
+    buildSignatureMatrixChunk_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrixChunk, smChunkSize);
 
-  //Update Signature Matrix
-  numberOfBlocks = numShingles / THREADS_PER_BLOCK;
-  if (numShingles % THREADS_PER_BLOCK) numberOfBlocks++;
-  updateSignatureMatrix_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrix, d_hashMatrix, d_cmRowIdx, d_cmColPtr, numShingles, smSize, numSets, numBins, binSize);
+    numberOfBlocks = SETS_PER_KERNEL / THREADS_PER_BLOCK;
+    if (SETS_PER_KERNEL % THREADS_PER_BLOCK) numberOfBlocks++;
+    int offSetCM = i*SETS_PER_KERNEL;
+    updateSignatureMatrix_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrixChunk, d_hashMatrix, d_cmRowIdx, d_cmColPtr, numShingles, smChunkSize, SETS_PER_KERNEL, numBins, binSize, offSetCM);
+    cudaMemcpy(&h_signatureMatrix[i*smChunkSize], d_signatureMatrixChunk, sizeof(int)*smChunkSize, cudaMemcpyDeviceToHost);
+  }
+  cudaFree(d_signatureMatrixChunk);
+
+  //Calculate the bin values for the rest of the sets (a number smaller than SETS_PER_KERNEL)
+  int lastSetsSize = numSets%SETS_PER_KERNEL;  
+  if (lastSetsSize) {
+    smChunkSize = lastSetsSize * numBins;
+    cudaMalloc(&d_signatureMatrixChunk, sizeof(int) * smChunkSize);
+
+    numberOfBlocks = smChunkSize / THREADS_PER_BLOCK;
+    if (smChunkSize % THREADS_PER_BLOCK) numberOfBlocks++;
+    buildSignatureMatrixChunk_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrixChunk, smChunkSize);
+
+    numberOfBlocks = lastSetsSize / THREADS_PER_BLOCK;
+    if (lastSetsSize % THREADS_PER_BLOCK) numberOfBlocks++;
+    int offSetCM = numKernelCalls*SETS_PER_KERNEL;
+    updateSignatureMatrix_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrixChunk, d_hashMatrix, d_cmRowIdx, d_cmColPtr, numShingles, smChunkSize, lastSetsSize, numBins, binSize, offSetCM);
+
+    cudaMemcpy(&h_signatureMatrix[numKernelCalls*SETS_PER_KERNEL*numBins], d_signatureMatrixChunk, sizeof(int)*smChunkSize, cudaMemcpyDeviceToHost);
+    cudaFree(d_signatureMatrixChunk);
+  }
   /*
-  cudaMemcpy(&h_signatureMatrix[0], d_signatureMatrix, sizeof(int)*smSize, cudaMemcpyDeviceToHost);
-  for (int i = 0; i < numBins; i++) {
-    for (int j = i*numBins; j < (i*numBins)+numSets; j++) {
-      std::cout << h_signatureMatrix[j] << " ";      
-    }
-    std::cout << "\n";
+  printf("printing...\n");
+  for (int m = 0; m < h_signatureMatrix.size(); m++) {
+    printf("%d ", h_signatureMatrix[m]);
   }
   */
 
   //Nested Loop Join
+  /*
+  int* d_signatureMatrix; 
+  cudaMalloc(&d_signatureMatrix, sizeof(int) * smSize);
+  cudaMemcpy(d_signatureMatrix, &h_signatureMatrix[0], sizeof(int) * smSize, cudaMemcpyHostToDevice);
   numberOfBlocks = rSize / THREADS_PER_BLOCK;
   if (rSize % THREADS_PER_BLOCK) numberOfBlocks++;
-  //  nestedLoopJoin_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrix, rSize, sSize, threshold, d_similarPairsCount, numBins);
+  nestedLoopJoin_kernel<<<numberOfBlocks, numberOfThreads>>>(d_signatureMatrix, rSize, sSize, threshold, d_similarPairsCount, numBins);
+  */
 
   //Memory transfer GPU -> CPU
   //  cudaMemcpy(&h_similarPairsCount, d_similarPairsCount, sizeof(int), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&h_signatureMatrix[0], d_signatureMatrix, sizeof(int)*smSize, cudaMemcpyDeviceToHost);
 
-  std::cout << "Number of similar pairs: " << h_similarPairsCount << "\n";
+  //  std::cout << "Number of similar pairs: " << h_similarPairsCount << "\n";
 
   //Free GPU allocated memory
-  cudaFree(d_signatureMatrix);
   cudaFree(d_hashMatrix);
   cudaFree(d_cmRowIdx);
   cudaFree(d_cmColPtr);

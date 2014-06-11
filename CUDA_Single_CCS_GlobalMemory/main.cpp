@@ -66,8 +66,8 @@ computeSimilarities(std::vector<int> signatureMatrix, int rSize, int sSize, std:
       identicalMinhashes = 0;
       emptyBins = 0;
       for (int k = 0; k < numBins; k++) {
-	if (signatureMatrix[i+(k*numSets)] == signatureMatrix[j+(k*numSets)]) {
-	  if (signatureMatrix[i+(k*numSets)] == INT_MAX) {
+	if (signatureMatrix[(i*numBins)+k] == signatureMatrix[(j*numBins)+k]) {
+	  if (signatureMatrix[(i*numBins)+k] == INT_MAX) {
 	    emptyBins++;
 	  } else {
 	    identicalMinhashes++;
@@ -76,7 +76,7 @@ computeSimilarities(std::vector<int> signatureMatrix, int rSize, int sSize, std:
       }
       similarity = (identicalMinhashes*1.0)/((numBins*1.0) - (emptyBins*1.0));
       if (similarity >= SIMILARITY_THRESHOLD) {
-	//	std::cout << "The similarity between " << i << " and " << j  << " is " << similarity << "\n";
+	//	std::cout << "The similarity between " << relationRSetsID[i] << " and " << relationSSetsID[j]  << " is " << similarity << "\n";
 	similarPairs++;
       }
     }
@@ -133,9 +133,14 @@ main(int argc, char *argv[])
   std::vector<int> h_signatureMatrix (numSets*numBins);
   std::cout << "smMatrix Size: " << h_signatureMatrix.size() << "\n";
   kernelManager(h_signatureMatrix, h_characteristicMatrix, numShingles, primeForHashing, rSize, sSize, numBins, binSize);
-
+  /*
+  printf("printing SM...\n");
+  for (int m = 0; m < h_signatureMatrix.size(); m++) {
+    printf("%d ", h_signatureMatrix[m]);
+  }
+  */
   //Perform a nested loop to check the similarities between sets
-  //computeSimilarities(h_signatureMatrix, rSize, sSize, relationRSetsID, relationSSetsID, numBins);  
+  computeSimilarities(h_signatureMatrix, rSize, sSize, relationRSetsID, relationSSetsID, numBins);  
 
   delete(h_characteristicMatrix);
 
